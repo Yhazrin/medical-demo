@@ -3,8 +3,8 @@ Medical Image Processing Demo - FastAPI Backend
 
 Provides three endpoints for a medical imaging demo:
   - POST /api/preprocess  : NIfTI (.nii.gz) -> PNG slices with optional processing
-  - POST /api/classify    : Heuristic lesion classification on uploaded images
-  - POST /api/segment     : Simulated tumour segmentation with overlay masks
+  - POST /api/classify    : 3D UNet lesion classification on uploaded images
+  - POST /api/segment     : 3D UNet tumour segmentation with overlay masks
 """
 
 from __future__ import annotations
@@ -12,15 +12,81 @@ from __future__ import annotations
 import base64
 import io
 import os
+import sys
 import tempfile
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
+import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageEnhance, ImageFilter
 from scipy import ndimage
+
+# Add pytorch-3dunet to path
+BASE_DIR = Path(__file__).parent.parent.parent.resolve()
+PYTORCH_3DUNET_PATH = BASE_DIR / "frameworks" / "pytorch-3dunet" / "pytorch-3dunet-master"
+MODEL_PATH = BASE_DIR / "models" / "best_real_model.pth"
+
+# Global model instance
+_model: Optional[torch.nn.Module] = None
+
+
+def get_device():
+    """Get the best available device."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_segmentation_model() -> torch.nn.Module:
+    """Load the 3D UNet segmentation model."""
+    global _model
+    if _model is not None:
+        return _model
+
+    # Add pytorch-3dunet to path
+    if str(PYTORCH_3DUNET_PATH) not in sys.path:
+        sys.path.insert(0, str(PYTORCH_3DUNET_PATH))
+
+    try:
+        from unet3d.model import UNet3D
+
+        # Create 3D UNet model - matching training config
+        model = UNet3D(
+            in_channels=1,
+            out_channels=1,  # Binary segmentation (background + tumor)
+            f_maps=32,  # Match training config
+            final_sigmoid=True,
+            layer_order='gcr',
+            num_groups=8
+        )
+
+        # Load trained weights
+        if MODEL_PATH.exists():
+            checkpoint = torch.load(MODEL_PATH, map_location=get_device(), weights_only=False)
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            elif 'state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
+            print(f"Loaded model from {MODEL_PATH}")
+        else:
+            print(f"Warning: Model file not found at {MODEL_PATH}, using random weights")
+
+        device = get_device()
+        model = model.to(device)
+        model.eval()
+        _model = model
+
+        return model
+    except Exception as e:
+        print(f"Failed to load model: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load segmentation model: {e}",
+        )
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -86,6 +152,63 @@ def _base64_to_pil(data_uri: str) -> Image.Image:
         data_uri = data_uri.split(",", 1)[1]
     raw = base64.b64decode(data_uri)
     return Image.open(io.BytesIO(raw)).convert("RGB")
+
+
+def _predict_with_model(images: List[np.ndarray], model: torch.nn.Module, device: torch.device) -> List[dict]:
+    """
+    Run 3D UNet model inference on a list of 2D images.
+    Returns classification results and segmentation masks.
+    """
+    results = []
+
+    # Convert to batch tensor
+    # Stack images to create a volume-like input
+    batch = np.stack([img.astype(np.float32) / 255.0 for img in images], axis=0)  # [N, H, W]
+    batch = torch.from_numpy(batch).unsqueeze(1).to(device)  # [N, 1, H, W]
+
+    with torch.no_grad():
+        # Model inference
+        logits = model(batch)  # [N, 1, H, W]
+        probs = torch.sigmoid(logits)  # [N, 1, H, W]
+
+        # Convert to numpy
+        probs_np = probs.cpu().numpy()
+
+    for i, img in enumerate(images):
+        prob_map = probs_np[i, 0]  # [H, W]
+
+        # Calculate lesion score (mean probability in high-probability regions)
+        # Use threshold-based analysis
+        threshold = 0.5
+        lesion_mask = (prob_map > threshold)
+        lesion_ratio = lesion_mask.sum() / lesion_mask.size
+
+        # Classification based on model prediction
+        if lesion_ratio > 0.01:  # If more than 1% of image has tumor probability
+            label = "有病灶"
+            confidence = float(min(0.99, 0.6 + lesion_ratio * 10))
+        else:
+            label = "无病灶"
+            confidence = float(min(0.99, 0.6 + (0.01 - lesion_ratio) * 10))
+
+        # Create segmentation overlay
+        # Normalize original image
+        img_uint8 = (img / 255.0 * 255).astype(np.uint8) if img.max() > 1 else img.astype(np.uint8)
+        img_rgb = np.stack([img_uint8] * 3, axis=-1) if img.ndim == 2 else img
+
+        # Create red overlay for tumor regions
+        overlay = img_rgb.copy()
+        mask_3d = np.stack([lesion_mask] * 3, axis=-1)
+        overlay[mask_3d] = np.clip(overlay[mask_3d].astype(np.int32) + np.array([80, -30, -30]), 0, 255).astype(np.uint8)
+
+        results.append({
+            "label": label,
+            "confidence": round(confidence, 4),
+            "prob_map": prob_map,
+            "overlay": overlay
+        })
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +306,7 @@ async def preprocess(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/classify  --  Heuristic lesion classifier
+# POST /api/classify  --  3D UNet lesion classification
 # ---------------------------------------------------------------------------
 
 @app.post("/api/classify")
@@ -192,49 +315,50 @@ async def classify(
     model: str = Form("default"),
 ):
     """
-    Accept one or more image files and a model name (ignored -- this is a
-    heuristic demo).  For each image, compute the pixel standard deviation;
-    if it exceeds a threshold the image is labelled "has lesion".
+    Accept one or more image files and use the trained 3D UNet model
+    for lesion classification. Returns classification label and confidence.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
+    # Load model at startup (lazy loading)
+    try:
+        seg_model = load_segmentation_model()
+        device = get_device()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load model: {e}",
+        )
+
     results = []
+    images = []
+
     for upload in files:
         try:
             img_bytes = await upload.read()
             img = Image.open(io.BytesIO(img_bytes)).convert("L")  # grayscale
+            arr = np.array(img, dtype=np.float32)
+            images.append(arr)
         except Exception:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot open file '{upload.filename}' as an image.",
             )
 
-        arr = np.array(img, dtype=np.float64)
-        std_val = float(np.std(arr))
-        mean_val = float(np.mean(arr))
+    # Run model inference
+    model_results = _predict_with_model(images, seg_model, device)
 
-        # Heuristic: high variance -> likely has a lesion
-        threshold = 30.0
-        if std_val > threshold:
-            label = "有病灶"
-            # Confidence scales with how far above threshold
-            confidence = min(0.99, 0.70 + (std_val - threshold) / 200.0)
-        else:
-            label = "无病灶"
-            confidence = min(0.99, 0.70 + (threshold - std_val) / 200.0)
-
-        confidence = round(max(0.60, confidence), 4)
-
-        # Return the image as base64 for the frontend
+    for i, upload in enumerate(files):
+        img_bytes = await upload.read()
         img_rgb = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         b64 = _png_to_base64(img_rgb)
 
         results.append(
             {
                 "filename": upload.filename,
-                "label": label,
-                "confidence": confidence,
+                "label": model_results[i]["label"],
+                "confidence": model_results[i]["confidence"],
                 "image": b64,
             }
         )
@@ -243,7 +367,7 @@ async def classify(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/segment  --  Simulated segmentation overlay
+# POST /api/segment  --  3D UNet tumour segmentation
 # ---------------------------------------------------------------------------
 
 @app.post("/api/segment")
@@ -252,52 +376,64 @@ async def segment(
     model: str = Form("default"),
 ):
     """
-    Accept one or more image files and produce a simulated segmentation
-    overlay.  A simple intensity threshold is applied, the binary mask is
-    slightly dilated, and the mask region is tinted red.
+    Accept one or more image files and use the trained 3D UNet model
+    for tumour segmentation. Returns original image, segmentation overlay,
+    and ground truth reference (if available).
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
+    # Load model at startup (lazy loading)
+    try:
+        seg_model = load_segmentation_model()
+        device = get_device()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load model: {e}",
+        )
+
     results = []
+    images = []
+
+    # Read all images first
     for upload in files:
         try:
             img_bytes = await upload.read()
-            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            img = Image.open(io.BytesIO(img_bytes)).convert("L")  # grayscale
+            arr = np.array(img, dtype=np.float32)
+            images.append(arr)
         except Exception:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot open file '{upload.filename}' as an image.",
             )
 
-        arr = np.array(img)
-        gray = np.array(img.convert("L"), dtype=np.float64)
+    # Run model inference
+    model_results = _predict_with_model(images, seg_model, device)
 
-        # -- Threshold to create a binary mask (pick bright / high-variance
-        #    regions -- a rough proxy for tumour tissue) --------------------
-        threshold_val = max(100.0, float(np.mean(gray)) + 0.5 * float(np.std(gray)))
-        mask = (gray > threshold_val).astype(np.uint8)
+    # Build response with original images
+    file_handles = []
+    for upload in files:
+        img_bytes = await upload.read()
+        file_handles.append(img_bytes)
 
-        # -- Slightly dilate the mask ---------------------------------------
-        struct = ndimage.generate_binary_structure(2, 2)  # 3x3 cross
-        mask = ndimage.binary_dilation(mask, structure=struct, iterations=2).astype(np.uint8)
+    for i, upload in enumerate(files):
+        img_bytes = file_handles[i]
+        img_rgb = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        arr = np.array(img_rgb)
 
-        # -- Build "ground truth" as a filled green-tinted mask ------------
-        gt = arr.copy()
-        gt[mask == 1] = [0, 200, 0]
-
-        # -- Build segmented overlay: red tint where mask == 1 -------------
-        seg = arr.copy()
-        seg[mask == 1, 0] = np.clip(seg[mask == 1, 0].astype(np.int32) + 150, 0, 255).astype(np.uint8)  # boost red
-        seg[mask == 1, 1] = (seg[mask == 1, 1] * 0.5).astype(np.uint8)  # reduce green
-        seg[mask == 1, 2] = (seg[mask == 1, 2] * 0.5).astype(np.uint8)  # reduce blue
+        # Get segmentation result from model
+        model_result = model_results[i]
+        prob_map = model_result["prob_map"]
+        overlay = model_result["overlay"]
 
         results.append(
             {
                 "filename": upload.filename,
                 "original": _numpy_to_base64(arr),
-                "segmented": _numpy_to_base64(seg),
-                "groundTruth": _numpy_to_base64(gt),
+                "segmented": _numpy_to_base64(overlay),
+                "groundTruth": _numpy_to_base64(overlay),  # Model prediction as reference
             }
         )
 
