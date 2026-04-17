@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload,
   Play,
-  Download,
   Trash2,
   CheckCircle,
   AlertCircle,
@@ -10,7 +9,6 @@ import {
   Image,
   FileJson,
   FileSpreadsheet,
-  Save,
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import WorkspaceLayout from '../components/WorkspaceLayout';
@@ -32,7 +30,7 @@ interface ClassifyResult {
 const modelOptions = [
   { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet模型，47MB' },
   { value: 'resnet50_imagenet', label: 'ResNet-50 (PyTorch下载)', description: 'ImageNet预训练，98MB' },
-  { value: 'efficientnet_b0_imagenet', label: 'EfficientNet-B0 (PyTorch下载)', description: 'ImageNet预训练，21MB' ],
+  { value: 'efficientnet_b0_imagenet', label: 'EfficientNet-B0 (PyTorch下载)', description: 'ImageNet预训练，21MB' }
 ];
 
 // Storage key
@@ -174,12 +172,6 @@ export default function Classification() {
 
   const lesionCount = history.filter(r => r.label === '有病灶').length;
   const noLesionCount = history.filter(r => r.label === '无病灶').length;
-
-  // Get model name from options
-  const getModelLabel = (key: string) => {
-    const opt = modelOptions.find(o => o.value === key);
-    return opt ? opt.label : key;
-  };
 
   const sidebar = (
     <>

@@ -4,9 +4,6 @@ import {
   Image,
   Layers,
   Loader2,
-  CheckCircle,
-  AlertCircle,
-  Download,
   FileJson,
   FileSpreadsheet,
   Trash2,
@@ -16,7 +13,6 @@ import GlassCard from '../components/GlassCard';
 import WorkspaceLayout from '../components/WorkspaceLayout';
 import UploadZone from '../components/UploadZone';
 import ModelSelector from '../components/ModelSelector';
-import StatusBadge from '../components/StatusBadge';
 import { segmentSlices, dataUriFromApiImage } from '../api/client';
 
 type PageStatus = 'idle' | 'processing' | 'done' | 'error';
@@ -30,7 +26,7 @@ interface SegmentationResult {
 }
 
 const modelOptions = [
-  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet分割模型，47MB' },
+  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet分割模型，47MB' }
 ];
 
 const STORAGE_KEY = 'medical_demo_segmentation_results';
@@ -88,8 +84,6 @@ export default function Segmentation() {
   const [history, setHistory] = useState<SegmentationResult[]>([]);
   const [status, setStatus] = useState<PageStatus>('idle');
   const [viewMode, setViewMode] = useState<'all' | 'grid'>('all');
-  const [selectedResult, setSelectedResult] = useState<number | null>(null);
-  const [showOverlay, setShowOverlay] = useState(true);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -298,14 +292,10 @@ export default function Segmentation() {
                 <div
                   key={`${r.filename}-${i}`}
                   className="result-card"
-                  onClick={() => {
-                    setSelectedResult(i);
-                    setShowOverlay(true);
-                  }}
                 >
                   <div className="result-image-container">
                     <img
-                      src={dataUriFromApiImage(showOverlay ? r.overlay : r.original)}
+                      src={dataUriFromApiImage(r.overlay)}
                       alt={r.filename}
                       className="result-image"
                     />
