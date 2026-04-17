@@ -10,15 +10,11 @@ import { segmentSlices, dataUriFromApiImage, type SegmentationItem } from '../ap
 type PageStatus = 'idle' | 'processing' | 'done' | 'error';
 
 const modelOptions = [
-  { value: 'unet', label: 'U-Net', description: '经典编码-解码分割网络，医学图像分割基准模型' },
-  { value: 'attention_unet', label: 'Attention U-Net', description: '引入注意力机制的U-Net，聚焦病灶关键区域' },
-  { value: 'segcaps', label: 'SegCaps', description: '胶囊网络分割模型，参数效率高，适合资源受限场景' },
+  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet分割模型，47MB' },
 ];
 
 const performanceData = [
-  { model: 'U-Net', dice: '0.823', iou: '0.712', precision: '0.856', recall: '0.801' },
-  { model: 'Attention U-Net', dice: '0.845', iou: '0.738', precision: '0.871', recall: '0.825' },
-  { model: 'SegCaps', dice: '0.812', iou: '0.698', precision: '0.843', recall: '0.790' },
+  { model: '3D UNet (自训练)', dice: '-', iou: '-', precision: '-', recall: '-' },
 ];
 
 const panelFrame: CSSProperties = {
@@ -33,7 +29,7 @@ const panelFrame: CSSProperties = {
 
 export default function Segmentation() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [selectedModel, setSelectedModel] = useState('unet');
+  const [selectedModel, setSelectedModel] = useState('unet3d_custom');
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<SegmentationItem[]>([]);

@@ -21,6 +21,8 @@ export interface ClassificationItem {
   filename: string;
   label: string;
   confidence: number;
+  model: string;
+  source: string;
   image: string;
 }
 

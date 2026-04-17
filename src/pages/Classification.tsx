@@ -23,18 +23,20 @@ interface ClassifyResult {
   filename: string;
   label: string;
   confidence: number;
+  model: string;
+  source: string;
   image: string;
 }
 
 const modelOptions = [
-  { value: 'vgg', label: 'VGG-16', description: '经典深度卷积网络，适合图像分类任务' },
-  { value: 'resnet', label: 'ResNet-50', description: '残差网络，深层特征提取能力强' },
-  { value: 'efficientnet', label: 'EfficientNet-B0', description: '高效轻量网络，平衡精度与效率' },
+  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet模型，47MB' },
+  { value: 'resnet50_imagenet', label: 'ResNet-50 (PyTorch下载)', description: 'ImageNet预训练，98MB' },
+  { value: 'efficientnet_b0_imagenet', label: 'EfficientNet-B0 (PyTorch下载)', description: 'ImageNet预训练，21MB' },
 ];
 
 export default function Classification() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [selectedModel, setSelectedModel] = useState('vgg');
+  const [selectedModel, setSelectedModel] = useState('unet3d_custom');
   const [savePath, setSavePath] = useState('./output/classification_results/');
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
