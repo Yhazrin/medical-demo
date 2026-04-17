@@ -28,7 +28,7 @@ from scipy import ndimage
 # Add pytorch-3dunet to path
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()
 PYTORCH_3DUNET_PATH = BASE_DIR / "frameworks" / "pytorch-3dunet" / "pytorch-3dunet-master"
-MODEL_PATH = BASE_DIR / "models" / "best_real_model.pth"
+MODEL_PATH = Path(__file__).parent / "models" / "best_real_model.pth"
 
 # Global model instance
 _model: Optional[torch.nn.Module] = None
