@@ -32,8 +32,12 @@ export interface ClassificationResult {
 
 export interface SegmentationItem {
   filename: string;
+  label: string;
+  confidence: number;
+  image: string;
   original: string;
   segmented: string;
+  overlay: string;
   groundTruth?: string;
 }
 
