@@ -10,6 +10,8 @@ import {
   FileJson,
   FileSpreadsheet,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import GlassCard from '../components/GlassCard';
 import WorkspaceLayout from '../components/WorkspaceLayout';
 import UploadZone from '../components/UploadZone';
@@ -21,6 +23,7 @@ type PageStatus = 'idle' | 'processing' | 'done' | 'error';
 interface ClassifyResult {
   filename: string;
   label: string;
+  labelKey: string;
   confidence: number;
   model: string;
   source: string;
@@ -28,12 +31,11 @@ interface ClassifyResult {
 }
 
 const modelOptions = [
-  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet模型，47MB' },
-  { value: 'resnet50_imagenet', label: 'ResNet-50 (PyTorch下载)', description: 'ImageNet预训练，98MB' },
-  { value: 'efficientnet_b0_imagenet', label: 'EfficientNet-B0 (PyTorch下载)', description: 'ImageNet预训练，21MB' }
+  { value: 'unet3d_custom', labelKey: 'classification.modelUnet3d', descriptionKey: 'classification.modelUnet3dDesc' },
+  { value: 'resnet50_imagenet', labelKey: 'classification.modelResnet50', descriptionKey: 'classification.modelResnet50Desc' },
+  { value: 'efficientnet_b0_imagenet', labelKey: 'classification.modelEfficientnet', descriptionKey: 'classification.modelEfficientnetDesc' },
 ];
 
-// Storage key
 const STORAGE_KEY = 'medical_demo_classification_results';
 
 function loadFromStorage(): ClassifyResult[] {
@@ -84,6 +86,7 @@ function exportToCsv(results: ClassifyResult[], filename: string = 'classificati
 }
 
 export default function Classification() {
+  const { t } = useTranslation();
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState('unet3d_custom');
   const [processing, setProcessing] = useState(false);
@@ -92,7 +95,6 @@ export default function Classification() {
   const [status, setStatus] = useState<PageStatus>('idle');
   const [viewMode, setViewMode] = useState<'all' | 'hasLesion' | 'noLesion'>('all');
 
-  // Load from localStorage on mount
   useEffect(() => {
     const stored = loadFromStorage();
     if (stored.length > 0) {
@@ -141,11 +143,20 @@ export default function Classification() {
     formData.append('model', selectedModel);
 
     try {
-      const response = await classifySlices(formData);
+      const response = await classifySlices(formData, i18n.language);
       clearProgressTimer();
       setProgress(100);
 
-      const newResults = response.results;
+      const newResults = response.results.map((r) => ({
+        filename: r.filename,
+        label: r.label,
+        labelKey: `common.${r.label_key === 'lesion' ? 'lesion' : 'noLesion'}`,
+        confidence: r.confidence,
+        model: r.model,
+        source: r.source,
+        image: r.image,
+      }));
+
       const allResults = [...history, ...newResults];
       setHistory(allResults);
       saveToStorage(allResults);
@@ -173,27 +184,31 @@ export default function Classification() {
   const lesionCount = history.filter(r => r.label === '有病灶').length;
   const noLesionCount = history.filter(r => r.label === '无病灶').length;
 
+  const getLabelDisplay = (result: ClassifyResult) => {
+    return result.labelKey ? t(result.labelKey) : result.label;
+  };
+
   const sidebar = (
     <>
-      <GlassCard title="加载切片">
+      <GlassCard title={t('classification.uploadTitle')}>
         <UploadZone
           onFilesSelected={handleFilesSelected}
           accept="image/*"
           multiple
-          title="拖拽切片图像到此处"
-          subtitle="支持 PNG、JPEG、TIFF 等常见医学图像格式"
+          title={t('classification.uploadHint')}
+          subtitle={t('classification.uploadSubtitle')}
         />
         {uploadedFiles.length > 0 && (
           <div className="mt-3 flex items-center gap-2 text-sm text-ui-secondary">
             <Image className="w-4 h-4 shrink-0" style={{ color: 'var(--accent-strong)' }} />
             <span>
-              已加载 <span className="text-emphasis">{uploadedFiles.length}</span> 张切片图像
+              {t('classification.filesLoaded', { count: uploadedFiles.length })}
             </span>
           </div>
         )}
       </GlassCard>
 
-      <GlassCard title="分类模型选择">
+      <GlassCard title={t('classification.modelTitle')}>
         <ModelSelector
           options={modelOptions}
           value={selectedModel}
@@ -212,13 +227,13 @@ export default function Classification() {
           ) : (
             <Play className="w-4 h-4" />
           )}
-          {processing ? '分类中...' : '开始分类'}
+          {processing ? t('classification.processingBtn') : t('classification.startBtn')}
         </button>
 
         {(status === 'processing' || status === 'done') && (
           <div className="space-y-1.5 mt-3">
             <div className="flex justify-between text-xs text-ui-secondary">
-              <span>处理进度</span>
+              <span>{t('preprocessing.progress')}</span>
               <span className="tabular-nums">{Math.round(progress)}%</span>
             </div>
             <div className="progress-track">
@@ -228,33 +243,33 @@ export default function Classification() {
         )}
 
         {status === 'error' && (
-          <p className="text-xs text-red-400 mt-3 text-center">分类失败���请��试</p>
+          <p className="text-xs text-red-400 mt-3 text-center">{t('classification.failedText')}</p>
         )}
       </GlassCard>
 
       {history.length > 0 && (
-        <GlassCard title="结果导出">
+        <GlassCard title={t('classification.exportTitle')}>
           <div className="flex flex-col gap-2">
             <button
               onClick={() => exportToJson(history, `classification_${Date.now()}.json`)}
               className="btn-secondary flex items-center justify-center gap-2"
             >
               <FileJson className="w-4 h-4" />
-              导出 JSON
+              {t('common.exportJson')}
             </button>
             <button
               onClick={() => exportToCsv(history, `classification_${Date.now()}.csv`)}
               className="btn-secondary flex items-center justify-center gap-2"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              导出 CSV
+              {t('common.exportCsv')}
             </button>
             <button
               onClick={handleClearHistory}
               className="btn-danger flex items-center justify-center gap-2"
             >
               <Trash2 className="w-4 h-4" />
-              清空历史
+              {t('classification.clearHistoryBtn')}
             </button>
           </div>
         </GlassCard>
@@ -263,33 +278,32 @@ export default function Classification() {
   );
 
   const main = (
-    <GlassCard title="分类结果" fill>
+    <GlassCard title={t('classification.resultTitle')} fill>
       {history.length === 0 && (
         <div
           className="flex flex-col items-center justify-center gap-3 py-16 min-h-[12rem]"
           style={{ color: 'var(--text-muted)' }}
         >
           <Upload className="w-12 h-12 opacity-40" />
-          <p className="text-sm m-0 text-ui-secondary">上传切片图像并开始分类</p>
-          <p className="text-xs text-ui-muted m-0">结果将自动保存到本地存储，换页不丢失</p>
+          <p className="text-sm m-0 text-ui-secondary">{t('classification.emptyTitle')}</p>
+          <p className="text-xs text-ui-muted m-0">{t('classification.emptySubtitle')}</p>
         </div>
       )}
 
       {history.length > 0 && (
         <div className="space-y-4">
-          {/* Summary */}
           <div className="flex items-center justify-between flex-wrap gap-3 pb-3" style={{ borderBottom: '1px solid var(--stroke-2)' }}>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-red-400" />
                 <span className="text-sm">
-                  有病灶: <span className="font-mono font-semibold text-red-400">{lesionCount}</span>
+                  {t('classification.lesionCount')}: <span className="font-mono font-semibold text-red-400">{lesionCount}</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-green-400" />
                 <span className="text-sm">
-                  无病灶: <span className="font-mono font-semibold text-green-400">{noLesionCount}</span>
+                  {t('classification.noLesionCount')}: <span className="font-mono font-semibold text-green-400">{noLesionCount}</span>
                 </span>
               </div>
             </div>
@@ -300,14 +314,13 @@ export default function Classification() {
                 onChange={(e) => setViewMode(e.target.value as typeof viewMode)}
                 className="input-field text-sm py-1.5"
               >
-                <option value="all">全部 ({history.length})</option>
-                <option value="hasLesion">有病灶 ({lesionCount})</option>
-                <option value="noLesion">无病灶 ({noLesionCount})</option>
+                <option value="all">{t('classification.filterAll')} ({history.length})</option>
+                <option value="hasLesion">{t('classification.filterHasLesion')} ({lesionCount})</option>
+                <option value="noLesion">{t('classification.filterNoLesion')} ({noLesionCount})</option>
               </select>
             </div>
           </div>
 
-          {/* Results Grid */}
           {filteredResults.length > 0 ? (
             <div className="result-grid">
               {filteredResults.map((r, i) => {
@@ -324,13 +337,13 @@ export default function Classification() {
                         className="result-image"
                       />
                       <div className={`result-badge ${isLesion ? 'badge-lesion' : 'badge-no-lesion'}`}>
-                        {r.label}
+                        {getLabelDisplay(r)}
                       </div>
                     </div>
                     <div className="result-info">
                       <p className="result-filename" title={r.filename}>{r.filename}</p>
                       <p className="result-confidence">
-                        置信度: {(r.confidence * 100).toFixed(1)}%
+                        {t('common.confidence')}: {(r.confidence * 100).toFixed(1)}%
                       </p>
                       <p className="result-model">{r.model}</p>
                     </div>
@@ -340,7 +353,7 @@ export default function Classification() {
             </div>
           ) : (
             <div className="text-center py-12 text-ui-muted">
-              <p>该筛选条件下无结果</p>
+              <p>{t('classification.noFilterResult')}</p>
             </div>
           )}
         </div>
@@ -352,8 +365,8 @@ export default function Classification() {
     <WorkspaceLayout
       sidebar={sidebar}
       main={main}
-      sidebarLabel="数据与模型"
-      mainLabel="分类输出"
+      sidebarLabel={t('classification.sidebarLabel')}
+      mainLabel={t('classification.mainLabel')}
     />
   );
 }

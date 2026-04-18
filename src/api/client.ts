@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: 'http://localhost:8002/api',
   timeout: 120_000,
 });
 
@@ -20,6 +20,7 @@ export interface PreprocessResult {
 export interface ClassificationItem {
   filename: string;
   label: string;
+  label_key: string;
   confidence: number;
   model: string;
   source: string;
@@ -33,12 +34,13 @@ export interface ClassificationResult {
 export interface SegmentationItem {
   filename: string;
   label: string;
+  label_key: string;
   confidence: number;
+  model: string;
+  source: string;
   image: string;
   original: string;
-  segmented: string;
   overlay: string;
-  groundTruth?: string;
 }
 
 export interface SegmentationResult {
@@ -54,14 +56,16 @@ export async function uploadAndPreprocess(file: File): Promise<PreprocessResult>
   return data;
 }
 
-export async function classifySlices(formData: FormData): Promise<ClassificationResult> {
+export async function classifySlices(formData: FormData, lang: string = 'zh'): Promise<ClassificationResult> {
+  formData.append('lang', lang);
   const { data } = await api.post<ClassificationResult>('/classify', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
 }
 
-export async function segmentSlices(formData: FormData): Promise<SegmentationResult> {
+export async function segmentSlices(formData: FormData, lang: string = 'zh'): Promise<SegmentationResult> {
+  formData.append('lang', lang);
   const { data } = await api.post<SegmentationResult>('/segment', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

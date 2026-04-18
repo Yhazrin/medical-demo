@@ -9,6 +9,8 @@ import {
   Trash2,
   Eye,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import GlassCard from '../components/GlassCard';
 import WorkspaceLayout from '../components/WorkspaceLayout';
 import UploadZone from '../components/UploadZone';
@@ -20,13 +22,14 @@ type PageStatus = 'idle' | 'processing' | 'done' | 'error';
 interface SegmentationResult {
   filename: string;
   label: string;
+  labelKey: string;
   confidence: number;
   original: string;
   overlay: string;
 }
 
 const modelOptions = [
-  { value: 'unet3d_custom', label: '3D UNet (自训练)', description: '自己训练的3D UNet分割模型，47MB' }
+  { value: 'unet3d_custom', labelKey: 'segmentation.modelUnet3d', descriptionKey: 'segmentation.modelUnet3dDesc' },
 ];
 
 const STORAGE_KEY = 'medical_demo_segmentation_results';
@@ -77,6 +80,7 @@ function exportToCsv(results: SegmentationResult[], filename: string = 'segmenta
 }
 
 export default function Segmentation() {
+  const { t } = useTranslation();
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState('unet3d_custom');
   const [processing, setProcessing] = useState(false);
@@ -85,7 +89,6 @@ export default function Segmentation() {
   const [status, setStatus] = useState<PageStatus>('idle');
   const [viewMode, setViewMode] = useState<'all' | 'grid'>('all');
 
-  // Load from localStorage on mount
   useEffect(() => {
     const stored = loadFromStorage();
     if (stored.length > 0) {
@@ -133,13 +136,14 @@ export default function Segmentation() {
     formData.append('model', selectedModel);
 
     try {
-      const response = await segmentSlices(formData);
+      const response = await segmentSlices(formData, i18n.language);
       clearProgressTimer();
       setProgress(100);
 
-      const newResults = response.results.map((r: any) => ({
+      const newResults = response.results.map((r) => ({
         filename: r.filename,
         label: r.label,
+        labelKey: `common.${r.label_key === 'lesion' ? 'lesion' : 'noLesion'}`,
         confidence: r.confidence,
         original: r.image,
         overlay: r.overlay,
@@ -163,27 +167,31 @@ export default function Segmentation() {
     localStorage.removeItem(STORAGE_KEY);
   };
 
+  const getLabelDisplay = (result: SegmentationResult) => {
+    return result.labelKey ? t(result.labelKey) : result.label;
+  };
+
   const sidebar = (
     <>
-      <GlassCard title="加载切片">
+      <GlassCard title={t('segmentation.uploadTitle')}>
         <UploadZone
           onFilesSelected={handleFilesSelected}
           accept="image/*"
           multiple
-          title="拖拽切片图像到此处"
-          subtitle="支持 PNG、JPEG、TIFF 等常见医学图像格式"
+          title={t('segmentation.uploadHint')}
+          subtitle={t('segmentation.uploadSubtitle')}
         />
         {uploadedFiles.length > 0 && (
           <div className="mt-3 flex items-center gap-2 text-sm text-ui-secondary">
             <Image className="w-4 h-4 shrink-0 text-[var(--text-primary)]" />
             <span>
-              已加载 <span className="text-emphasis">{uploadedFiles.length}</span> 张切片图像
+              {t('segmentation.filesLoaded', { count: uploadedFiles.length })}
             </span>
           </div>
         )}
       </GlassCard>
 
-      <GlassCard title="分割模型选择">
+      <GlassCard title={t('segmentation.modelTitle')}>
         <ModelSelector
           options={modelOptions}
           value={selectedModel}
@@ -202,13 +210,13 @@ export default function Segmentation() {
           ) : (
             <Play className="w-4 h-4" />
           )}
-          {processing ? '分割中...' : '开始分割'}
+          {processing ? t('segmentation.processingBtn') : t('segmentation.startBtn')}
         </button>
 
         {(status === 'processing' || status === 'done') && (
           <div className="space-y-1.5 mt-3">
             <div className="flex justify-between text-xs text-ui-secondary">
-              <span>处理进度</span>
+              <span>{t('preprocessing.progress')}</span>
               <span className="tabular-nums">{Math.round(progress)}%</span>
             </div>
             <div className="progress-track">
@@ -218,33 +226,33 @@ export default function Segmentation() {
         )}
 
         {status === 'error' && (
-          <p className="text-xs text-red-400 mt-3 text-center">分割失败，请重试</p>
+          <p className="text-xs text-red-400 mt-3 text-center">{t('segmentation.failedText')}</p>
         )}
       </GlassCard>
 
       {history.length > 0 && (
-        <GlassCard title="结果导出">
+        <GlassCard title={t('segmentation.exportTitle')}>
           <div className="flex flex-col gap-2">
             <button
               onClick={() => exportToJson(history, `segmentation_${Date.now()}.json`)}
               className="btn-secondary flex items-center justify-center gap-2"
             >
               <FileJson className="w-4 h-4" />
-              导出 JSON
+              {t('common.exportJson')}
             </button>
             <button
               onClick={() => exportToCsv(history, `segmentation_${Date.now()}.csv`)}
               className="btn-secondary flex items-center justify-center gap-2"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              导出 CSV
+              {t('common.exportCsv')}
             </button>
             <button
               onClick={handleClearHistory}
               className="btn-danger flex items-center justify-center gap-2"
             >
               <Trash2 className="w-4 h-4" />
-              清空历史
+              {t('segmentation.clearHistoryBtn')}
             </button>
           </div>
         </GlassCard>
@@ -253,25 +261,24 @@ export default function Segmentation() {
   );
 
   const main = (
-    <GlassCard title="分割结果" fill>
+    <GlassCard title={t('segmentation.resultTitle')} fill>
       {history.length === 0 && (
         <div
           className="flex flex-col items-center justify-center gap-3 py-16 min-h-[12rem]"
           style={{ color: 'var(--text-muted)' }}
         >
           <Layers className="w-12 h-12 opacity-40" />
-          <p className="text-sm m-0 text-ui-secondary">上传切片图像并开始分割</p>
-          <p className="text-xs text-ui-muted m-0">结果将自动保存到本地存储，换页不丢失</p>
+          <p className="text-sm m-0 text-ui-secondary">{t('segmentation.emptyTitle')}</p>
+          <p className="text-xs text-ui-muted m-0">{t('segmentation.emptySubtitle')}</p>
         </div>
       )}
 
       {history.length > 0 && (
         <div className="space-y-4">
-          {/* Summary */}
           <div className="flex items-center justify-between flex-wrap gap-3 pb-3" style={{ borderBottom: '1px solid var(--stroke-2)' }}>
             <div className="flex items-center gap-4">
               <span className="text-sm">
-                共 <span className="font-mono font-semibold">{history.length}</span> 张
+                {t('segmentation.totalSlices', { count: history.length })}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -280,12 +287,11 @@ export default function Segmentation() {
                 className="btn-secondary flex items-center gap-2 text-sm py-1.5"
               >
                 <Eye className="w-4 h-4" />
-                {viewMode === 'all' ? '网格视图' : '列表视图'}
+                {viewMode === 'all' ? t('common.gridView') : t('common.listView')}
               </button>
             </div>
           </div>
 
-          {/* Grid View */}
           {viewMode === 'grid' ? (
             <div className="result-grid">
               {history.map((r, i) => (
@@ -300,20 +306,19 @@ export default function Segmentation() {
                       className="result-image"
                     />
                     <div className="result-badge badge-lesion">
-                      {r.label}
+                      {getLabelDisplay(r)}
                     </div>
                   </div>
                   <div className="result-info">
                     <p className="result-filename" title={r.filename}>{r.filename}</p>
                     <p className="result-confidence">
-                      置信度: {(r.confidence * 100).toFixed(1)}%
+                      {t('common.confidence')}: {isNaN(r.confidence) ? '—' : `${(r.confidence * 100).toFixed(1)}%`}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            /* List View */
             <div className="space-y-4">
               {history.map((r, i) => (
                 <div key={`${r.filename}-${i}`} className="segment-result-item">
@@ -321,26 +326,26 @@ export default function Segmentation() {
                     <div className="segment-thumb">
                       <img
                         src={dataUriFromApiImage(r.original)}
-                        alt={`${r.filename} 原始`}
+                        alt={`${r.filename} ${t('segmentation.originalLabel')}`}
                         className="segment-img"
                       />
-                      <span className="segment-label">原始</span>
+                      <span className="segment-label">{t('segmentation.originalLabel')}</span>
                     </div>
                     <div className="segment-thumb segment-thumb-overlay">
                       <img
                         src={dataUriFromApiImage(r.overlay)}
-                        alt={`${r.filename} 分割`}
+                        alt={`${r.filename} ${t('segmentation.overlayLabel')}`}
                         className="segment-img"
                       />
-                      <span className="segment-label">分割</span>
+                      <span className="segment-label">{t('segmentation.overlayLabel')}</span>
                     </div>
                     <div className="segment-info">
                       <p className="text-sm font-medium m-0 truncate">{r.filename}</p>
                       <p className="text-xs text-ui-secondary m-0">
-                        标签: <span className={r.label === '有病灶' ? 'text-red-400' : 'text-green-400'}>{r.label}</span>
+                        {t('common.label')}: <span className={r.label === '有病灶' ? 'text-red-400' : 'text-green-400'}>{getLabelDisplay(r)}</span>
                       </p>
                       <p className="text-xs text-ui-muted m-0">
-                        置信度: {(r.confidence * 100).toFixed(1)}%
+                        {t('common.confidence')}: {isNaN(r.confidence) ? '—' : `${(r.confidence * 100).toFixed(1)}%`}
                       </p>
                     </div>
                   </div>
@@ -357,8 +362,8 @@ export default function Segmentation() {
     <WorkspaceLayout
       sidebar={sidebar}
       main={main}
-      sidebarLabel="数据与模型"
-      mainLabel="分割输出"
+      sidebarLabel={t('segmentation.sidebarLabel')}
+      mainLabel={t('segmentation.mainLabel')}
     />
   );
 }

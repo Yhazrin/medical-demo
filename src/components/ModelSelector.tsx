@@ -1,11 +1,15 @@
-interface Option {
+import { useTranslation } from 'react-i18next';
+
+export interface ModelOption {
   value: string;
-  label: string;
+  label?: string;
   description?: string;
+  labelKey?: string;
+  descriptionKey?: string;
 }
 
 interface ModelSelectorProps {
-  options: Option[];
+  options: ModelOption[];
   value: string;
   onChange: (value: string) => void;
   title?: string;
@@ -17,7 +21,16 @@ export default function ModelSelector({
   onChange,
   title,
 }: ModelSelectorProps) {
+  const { t } = useTranslation();
   const selected = options.find((o) => o.value === value);
+
+  const getLabel = (option: ModelOption) => {
+    return option.labelKey ? t(option.labelKey) : option.label;
+  };
+
+  const getDescription = (option: ModelOption) => {
+    return option.descriptionKey ? t(option.descriptionKey) : option.description;
+  };
 
   return (
     <div>
@@ -44,11 +57,11 @@ export default function ModelSelector({
             onClick={() => onChange(option.value)}
             type="button"
           >
-            {option.label}
+            {getLabel(option)}
           </button>
         ))}
       </div>
-      {selected?.description && (
+      {selected && getDescription(selected) && (
         <p
           style={{
             marginTop: '0.75rem',
@@ -58,7 +71,7 @@ export default function ModelSelector({
             marginBottom: 0,
           }}
         >
-          {selected.description}
+          {getDescription(selected)}
         </p>
       )}
     </div>

@@ -1,7 +1,9 @@
 import { Moon, Sun } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../context/ThemeContext';
 
 export default function ThemeToggle() {
+  const { t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -9,8 +11,8 @@ export default function ThemeToggle() {
       type="button"
       className="theme-toggle"
       onClick={toggleTheme}
-      aria-label={theme === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
-      title={theme === 'dark' ? '浅色' : '深色'}
+      aria-label={theme === 'dark' ? t('theme.light') : t('theme.dark')}
+      title={theme === 'dark' ? t('theme.light') : t('theme.dark')}
     >
       {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
     </button>

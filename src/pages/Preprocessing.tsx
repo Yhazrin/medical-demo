@@ -7,6 +7,7 @@ import {
   CheckCircle,
   AlertCircle,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import GlassCard from '../components/GlassCard';
 import WorkspaceLayout from '../components/WorkspaceLayout';
 import UploadZone from '../components/UploadZone';
@@ -20,22 +21,23 @@ type PageStatus = 'idle' | 'processing' | 'done' | 'error';
 const presetOptions = [
   {
     value: 'default',
-    label: '标准重采样 (1.0, 1.0, 1.0)',
-    description: '将体素间距统一重采样至 1mm³',
+    labelKey: 'preprocessing.presetDefault',
+    descriptionKey: 'preprocessing.presetDefaultDesc',
   },
   {
     value: 'resize',
-    label: '尺寸裁剪 (256×256×256)',
-    description: '将体积裁剪至统一尺寸便于模型输入',
+    labelKey: 'preprocessing.presetResize',
+    descriptionKey: 'preprocessing.presetResizeDesc',
   },
   {
     value: 'slice',
-    label: '切片转换 (128×128)',
-    description: '沿轴向切片并缩放至 128×128 像素',
+    labelKey: 'preprocessing.presetSlice',
+    descriptionKey: 'preprocessing.presetSliceDesc',
   },
 ];
 
 export default function Preprocessing() {
+  const { t } = useTranslation();
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedPreset, setSelectedPreset] = useState('default');
   const [processing, setProcessing] = useState(false);
@@ -73,7 +75,7 @@ export default function Preprocessing() {
 
   const handleStart = async () => {
     if (uploadedFiles.length === 0) {
-      alert('请先上传 MRI 数据文件');
+      alert(t('preprocessing.noFileAlert'));
       return;
     }
 
@@ -100,33 +102,33 @@ export default function Preprocessing() {
 
   const resultImages = results.map((src, i) => ({
     src: src.startsWith('data:') ? src : `data:image/png;base64,${src}`,
-    label: `切片 ${i + 1}`,
+    label: `${t('common.slice')} ${i + 1}`,
   }));
 
   const sidebar = (
     <>
-      <GlassCard title="MRI 数据上传">
+      <GlassCard title={t('preprocessing.uploadTitle')}>
         <UploadZone
           onFilesSelected={handleFilesSelected}
           accept=".nii,.gz,.nii.gz"
           multiple
-          title="上传 MRI 扫描文件"
-          subtitle="支持 .nii / .nii.gz 格式，可同时上传多个文件"
+          title={t('preprocessing.uploadHint')}
+          subtitle={t('preprocessing.uploadSubtitle')}
         />
         {uploadedFiles.length > 0 && (
           <div className="mt-3 flex items-center gap-2 text-sm text-ui-secondary">
             <FolderOpen className="w-4 h-4 shrink-0" style={{ color: 'var(--accent-strong)' }} />
             <span>
-              已加载 <span className="text-emphasis">{uploadedFiles.length}</span> 个文件
+              {t('preprocessing.filesLoaded', { count: uploadedFiles.length })}
             </span>
           </div>
         )}
       </GlassCard>
 
-      <GlassCard title="预处理设置">
+      <GlassCard title={t('preprocessing.settingsTitle')}>
         <div className="flex items-center gap-2 mb-3">
           <Settings className="w-4 h-4 shrink-0" style={{ color: 'var(--accent-strong)' }} />
-          <span className="text-sm text-ui-secondary">选择预处理预设方案</span>
+          <span className="text-sm text-ui-secondary">{t('preprocessing.selectPreset')}</span>
         </div>
         <ModelSelector
           options={presetOptions}
@@ -135,7 +137,7 @@ export default function Preprocessing() {
         />
         <p className="mt-3 text-xs text-ui-muted flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          当前版本使用默认预处理参数
+          {t('preprocessing.currentVersionTip')}
         </p>
       </GlassCard>
 
@@ -152,7 +154,7 @@ export default function Preprocessing() {
               ) : (
                 <Play className="w-4 h-4" />
               )}
-              {processing ? '预处理中...' : '开始预处理'}
+              {processing ? t('preprocessing.processingBtn') : t('preprocessing.startBtn')}
             </button>
             <StatusBadge status={status} />
           </div>
@@ -160,7 +162,7 @@ export default function Preprocessing() {
           {(status === 'processing' || status === 'done') && (
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-ui-secondary">
-                <span>处理进度</span>
+                <span>{t('preprocessing.progress')}</span>
                 <span className="tabular-nums">{Math.round(progress)}%</span>
               </div>
               <div className="progress-track">
@@ -174,11 +176,11 @@ export default function Preprocessing() {
   );
 
   const main = (
-    <GlassCard title="预处理结果" fill>
+    <GlassCard title={t('preprocessing.resultTitle')} fill>
       {status === 'idle' && results.length === 0 && (
         <ResultViewer
           images={[]}
-          emptyText="上传 MRI 数据并开始预处理以查看结果"
+          emptyText={t('preprocessing.emptyText')}
         />
       )}
 
@@ -191,7 +193,7 @@ export default function Preprocessing() {
             className="w-10 h-10 animate-spin"
             style={{ color: 'var(--accent-strong)' }}
           />
-          <p className="text-sm m-0">正在预处理 MRI 数据，请稍候...</p>
+          <p className="text-sm m-0">{t('preprocessing.processingText')}</p>
         </div>
       )}
 
@@ -199,7 +201,7 @@ export default function Preprocessing() {
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-ui-secondary min-h-[12rem]">
           <AlertCircle className="w-10 h-10 text-[var(--text-primary)]" />
           <p className="text-sm m-0 text-center">
-            预处理过程中发生错误，请检查文件格式后重试
+            {t('preprocessing.errorText')}
           </p>
         </div>
       )}
@@ -209,8 +211,7 @@ export default function Preprocessing() {
           <div className="flex items-center gap-2 text-sm text-ui-secondary flex-wrap">
             <CheckCircle className="w-4 h-4 shrink-0 text-[var(--text-primary)]" />
             <span>
-              预处理完成，共生成{' '}
-              <span className="text-emphasis">{resultImages.length}</span> 个切片
+              {t('preprocessing.doneText', { count: resultImages.length })}
             </span>
           </div>
           <ResultViewer images={resultImages} />
@@ -223,8 +224,8 @@ export default function Preprocessing() {
     <WorkspaceLayout
       sidebar={sidebar}
       main={main}
-      sidebarLabel="参数与运行"
-      mainLabel="切片预览"
+      sidebarLabel={t('preprocessing.sidebarLabel')}
+      mainLabel={t('preprocessing.mainLabel')}
     />
   );
 }

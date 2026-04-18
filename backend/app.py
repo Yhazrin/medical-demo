@@ -36,21 +36,27 @@ MODELS_DIR = Path(__file__).parent / "models"
 # Available models for classification
 CLASSIFY_MODELS = {
     "unet3d_custom": {
-        "name": "3D UNet (自训练)",
+        "name_zh": "3D UNet (自训练)",
+        "name_en": "3D UNet (Custom)",
         "file": "best_real_model.pth",
-        "source": "自训练",
+        "source_zh": "自训练",
+        "source_en": "Custom",
         "type": "segmentation"  # Used for segmentation but can classify
     },
     "resnet50_imagenet": {
-        "name": "ResNet-50 (ImageNet预训练)",
+        "name_zh": "ResNet-50 (ImageNet预训练)",
+        "name_en": "ResNet-50 (ImageNet)",
         "file": "resnet50_imagenet.pth",
-        "source": "PyTorch下载",
+        "source_zh": "PyTorch下载",
+        "source_en": "PyTorch",
         "type": "classification"
     },
     "efficientnet_b0_imagenet": {
-        "name": "EfficientNet-B0 (ImageNet预训练)",
+        "name_zh": "EfficientNet-B0 (ImageNet预训练)",
+        "name_en": "EfficientNet-B0 (ImageNet)",
         "file": "efficientnet_b0_imagenet.pth",
-        "source": "PyTorch下载",
+        "source_zh": "PyTorch下载",
+        "source_en": "PyTorch",
         "type": "classification"
     }
 }
@@ -58,11 +64,33 @@ CLASSIFY_MODELS = {
 # Available models for segmentation (only 3D UNet for now)
 SEGMENT_MODELS = {
     "unet3d_custom": {
-        "name": "3D UNet (自训练)",
+        "name_zh": "3D UNet (自训练)",
+        "name_en": "3D UNet (Custom)",
         "file": "best_real_model.pth",
-        "source": "自训练"
+        "source_zh": "自训练",
+        "source_en": "Custom"
     }
 }
+
+# Label translations
+LABEL_TRANSLATIONS = {
+    "zh": {"lesion": "有病灶", "no_lesion": "无病灶"},
+    "en": {"lesion": "Lesion", "no_lesion": "No Lesion"},
+}
+
+def get_label(lang: str, label_key: str) -> str:
+    """Get translated label for the given language."""
+    return LABEL_TRANSLATIONS.get(lang, LABEL_TRANSLATIONS["zh"]).get(label_key, label_key)
+
+def get_model_name(model_info: dict, lang: str) -> str:
+    """Get translated model name."""
+    key = f"name_{lang}"
+    return model_info.get(key, model_info.get("name_zh", ""))
+
+def get_model_source(model_info: dict, lang: str) -> str:
+    """Get translated model source."""
+    key = f"source_{lang}"
+    return model_info.get(key, model_info.get("source_zh", ""))
 
 # Global model cache
 _model_cache: Dict[str, torch.nn.Module] = {}
@@ -78,7 +106,7 @@ def load_unet3d_model(model_path: Path, device: torch.device) -> torch.nn.Module
     if str(PYTORCH_3DUNET_PATH) not in sys.path:
         sys.path.insert(0, str(PYTORCH_3DUNET_PATH))
 
-    from unet3d.model import UNet3D
+    from pytorch3dunet.unet3d.model import UNet3D
 
     # Create 3D UNet model
     model = UNet3D(
@@ -87,7 +115,8 @@ def load_unet3d_model(model_path: Path, device: torch.device) -> torch.nn.Module
         f_maps=32,
         final_sigmoid=True,
         layer_order='gcr',
-        num_groups=8
+        num_groups=1,
+        conv_upscale=2
     )
 
     # Load trained weights
@@ -243,8 +272,13 @@ def _predict_unet3d(images: List[np.ndarray], model: torch.nn.Module, device: to
     """Run 3D UNet model inference."""
     results = []
 
+    # Stack images and add depth dimension for 3D UNet: (N, 1, D, H, W)
+    # D=32 to allow multiple pooling levels in depth dimension
     batch = np.stack([img.astype(np.float32) / 255.0 for img in images], axis=0)
-    batch = torch.from_numpy(batch).unsqueeze(1).to(device)
+    batch = np.expand_dims(batch, axis=1)   # (N, 1, H, W)
+    batch = np.expand_dims(batch, axis=2)   # (N, 1, 1, H, W)
+    batch = np.repeat(batch, 32, axis=2)    # (N, 1, 32, H, W) - depth=32
+    batch = torch.from_numpy(batch).to(device)  # (N, 1, 32, H, W)
 
     with torch.no_grad():
         logits = model(batch)
@@ -252,27 +286,27 @@ def _predict_unet3d(images: List[np.ndarray], model: torch.nn.Module, device: to
         probs_np = probs.cpu().numpy()
 
     for i, img in enumerate(images):
-        prob_map = probs_np[i, 0]
+        # probs_np shape: (N, 1, 1, H, W) -> squeeze to (H, W)
+        prob_map = probs_np[i, 0, 0]
         threshold = 0.5
         lesion_mask = (prob_map > threshold)
         lesion_ratio = lesion_mask.sum() / lesion_mask.size
 
         if lesion_ratio > 0.01:
-            label = "有病灶"
+            label_key = "lesion"
             confidence = float(min(0.99, 0.6 + lesion_ratio * 10))
         else:
-            label = "无病灶"
+            label_key = "no_lesion"
             confidence = float(min(0.99, 0.6 + (0.01 - lesion_ratio) * 10))
 
         img_uint8 = (img / 255.0 * 255).astype(np.uint8) if img.max() > 1 else img.astype(np.uint8)
         img_rgb = np.stack([img_uint8] * 3, axis=-1) if img.ndim == 2 else img
 
         overlay = img_rgb.copy()
-        mask_3d = np.stack([lesion_mask] * 3, axis=-1)
-        overlay[mask_3d] = np.clip(overlay[mask_3d].astype(np.int32) + np.array([80, -30, -30]), 0, 255).astype(np.uint8)
+        overlay[lesion_mask] = np.clip(overlay[lesion_mask].astype(np.int32) + np.array([80, -30, -30]), 0, 255).astype(np.uint8)
 
         results.append({
-            "label": label,
+            "label_key": label_key,
             "confidence": round(confidence, 4),
             "prob_map": prob_map,
             "overlay": overlay
@@ -308,16 +342,16 @@ def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, de
         # For pretrained models, we use a simple heuristic
         # In production, you'd use actual ImageNet class labels
         if feature_magnitude > 0.3:
-            label = "有病灶"
+            label_key = "lesion"
         else:
-            label = "无病灶"
+            label_key = "no_lesion"
 
         # Create overlay (same segmentation for visualization)
         img_uint8 = (img / 255.0 * 255).astype(np.uint8) if img.max() > 1 else img.astype(np.uint8)
         img_rgb = np.stack([img_uint8] * 3, axis=-1) if img.ndim == 2 else img
 
         results.append({
-            "label": label,
+            "label_key": label_key,
             "confidence": round(confidence, 4),
             "prob_map": np.zeros((img.shape[0], img.shape[1])),
             "overlay": img_rgb
@@ -331,22 +365,22 @@ def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, de
 # ---------------------------------------------------------------------------
 
 @app.get("/api/models")
-async def get_models():
+async def get_models(lang: str = "zh"):
     """Return list of available models."""
     return {
         "classification": [
             {
                 "key": key,
-                "name": info["name"],
-                "source": info["source"]
+                "name": get_model_name(info, lang),
+                "source": get_model_source(info, lang)
             }
             for key, info in CLASSIFY_MODELS.items()
         ],
         "segmentation": [
             {
                 "key": key,
-                "name": info["name"],
-                "source": info["source"]
+                "name": get_model_name(info, lang),
+                "source": get_model_source(info, lang)
             }
             for key, info in SEGMENT_MODELS.items()
         ]
@@ -437,6 +471,7 @@ async def preprocess(
 async def classify(
     files: List[UploadFile] = File(...),
     model: str = Form("unet3d_custom"),
+    lang: str = Form("zh"),
 ):
     """Accept one or more image files and classify using selected model."""
     if not files:
@@ -489,10 +524,11 @@ async def classify(
         results.append(
             {
                 "filename": upload.filename,
-                "label": model_results[i]["label"],
+                "label": get_label(lang, model_results[i]["label_key"]),
+                "label_key": model_results[i]["label_key"],
                 "confidence": model_results[i]["confidence"],
-                "model": model_info["name"],
-                "source": model_info["source"],
+                "model": get_model_name(model_info, lang),
+                "source": get_model_source(model_info, lang),
                 "image": b64,
             }
         )
@@ -508,6 +544,7 @@ async def classify(
 async def segment(
     files: List[UploadFile] = File(...),
     model: str = Form("unet3d_custom"),
+    lang: str = Form("zh"),
 ):
     """Accept one or more image files and segment using selected model."""
     if not files:
@@ -520,6 +557,8 @@ async def segment(
             detail=f"Unknown model: {model}. Available: {list(SEGMENT_MODELS.keys())}",
         )
 
+    model_info = SEGMENT_MODELS[model]
+
     try:
         seg_model = load_model(model, task_type="segmentation")
         device = get_device()
@@ -531,10 +570,12 @@ async def segment(
 
     results = []
     images = []
+    file_bytes = []  # Store original bytes for overlay generation
 
     for upload in files:
         try:
             img_bytes = await upload.read()
+            file_bytes.append(img_bytes)
             img = Image.open(io.BytesIO(img_bytes)).convert("L")
             arr = np.array(img, dtype=np.float32)
             images.append(arr)
@@ -546,20 +587,18 @@ async def segment(
 
     model_results = _predict_unet3d(images, seg_model, device)
 
-    file_handles = []
-    for upload in files:
-        img_bytes = await upload.read()
-        file_handles.append(img_bytes)
-
     for i, upload in enumerate(files):
-        img_bytes = file_handles[i]
+        img_bytes = file_bytes[i]
         img_rgb = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
         results.append(
             {
                 "filename": upload.filename,
-                "label": model_results[i]["label"],
+                "label": get_label(lang, model_results[i]["label_key"]),
+                "label_key": model_results[i]["label_key"],
                 "confidence": model_results[i]["confidence"],
+                "model": get_model_name(model_info, lang),
+                "source": get_model_source(model_info, lang),
                 "image": _png_to_base64(img_rgb),
                 "overlay": _numpy_to_base64(model_results[i]["overlay"]),
             }

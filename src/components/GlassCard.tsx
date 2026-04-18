@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface GlassCardProps {
   children: ReactNode;
@@ -9,9 +10,11 @@ interface GlassCardProps {
 }
 
 export default function GlassCard({ children, className = '', title, fill }: GlassCardProps) {
+  const { t } = useTranslation();
+
   return (
     <div className={`glass-card ${fill ? 'glass-card--fill' : ''} ${className}`.trim()}>
-      {title ? <h3 className="section-title">{title}</h3> : null}
+      {title ? <h3 className="section-title">{t(title)}</h3> : null}
       {fill ? <div className="glass-card__body">{children}</div> : children}
     </div>
   );

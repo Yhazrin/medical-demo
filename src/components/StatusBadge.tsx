@@ -1,5 +1,5 @@
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type Status = 'idle' | 'processing' | 'done' | 'error';
 
@@ -8,41 +8,50 @@ interface StatusBadgeProps {
   text?: string;
 }
 
-const statusConfig: Record<
-  Status,
-  { bg: string; color: string; border: string; label: string; icon?: ReactNode }
-> = {
-  idle: {
-    bg: 'var(--bg-inset)',
-    color: 'var(--text-muted)',
-    border: 'var(--stroke-1)',
-    label: '就绪',
-  },
-  processing: {
-    bg: 'var(--bg-inset)',
-    color: 'var(--text-primary)',
-    border: 'var(--stroke-1)',
-    label: '处理中',
-    icon: <Loader2 size={14} className="animate-spin" />,
-  },
-  done: {
-    bg: 'var(--inverse-bg)',
-    color: 'var(--inverse-fg)',
-    border: 'var(--inverse-bg)',
-    label: '完成',
-    icon: <CheckCircle size={14} />,
-  },
-  error: {
-    bg: 'transparent',
-    color: 'var(--text-primary)',
-    border: 'var(--chip-outline)',
-    label: '错误',
-    icon: <AlertCircle size={14} />,
-  },
+const statusKeys: Record<Status, string> = {
+  idle: 'common.idle',
+  processing: 'common.processing',
+  done: 'common.done',
+  error: 'common.error',
 };
 
 export default function StatusBadge({ status, text }: StatusBadgeProps) {
-  const cfg = statusConfig[status];
+  const { t } = useTranslation();
+
+  const getConfig = (s: Status) => {
+    switch (s) {
+      case 'idle':
+        return {
+          bg: 'var(--bg-inset)',
+          color: 'var(--text-muted)',
+          border: 'var(--stroke-1)',
+          icon: undefined,
+        };
+      case 'processing':
+        return {
+          bg: 'var(--bg-inset)',
+          color: 'var(--text-primary)',
+          border: 'var(--stroke-1)',
+          icon: <Loader2 size={14} className="animate-spin" />,
+        };
+      case 'done':
+        return {
+          bg: 'var(--inverse-bg)',
+          color: 'var(--inverse-fg)',
+          border: 'var(--inverse-bg)',
+          icon: <CheckCircle size={14} />,
+        };
+      case 'error':
+        return {
+          bg: 'transparent',
+          color: 'var(--text-primary)',
+          border: 'var(--chip-outline)',
+          icon: <AlertCircle size={14} />,
+        };
+    }
+  };
+
+  const cfg = getConfig(status);
 
   return (
     <span
@@ -63,7 +72,7 @@ export default function StatusBadge({ status, text }: StatusBadgeProps) {
       }}
     >
       {cfg.icon}
-      {text ?? cfg.label}
+      {text ?? t(statusKeys[status])}
     </span>
   );
 }

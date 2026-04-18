@@ -1,17 +1,20 @@
 import { Activity } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import ThemeToggle from './ThemeToggle';
-import { getWorkflowRouteContext } from '../config/workflowRouteContext';
+import LanguageToggle from './LanguageToggle';
+import { useWorkflowRouteContext } from '../config/workflowRouteContext';
 
 const navItems = [
-  { to: '/', label: 'MRI 预处理' },
-  { to: '/classify', label: '切片分类' },
-  { to: '/segment', label: '病灶分割' },
+  { to: '/', labelKey: 'nav.preprocessing' },
+  { to: '/classify', labelKey: 'nav.classification' },
+  { to: '/segment', labelKey: 'nav.segmentation' },
 ];
 
 export default function Navbar() {
   const { pathname } = useLocation();
-  const ctx = getWorkflowRouteContext(pathname);
+  const { t } = useTranslation();
+  const ctx = useWorkflowRouteContext(pathname);
 
   return (
     <header
@@ -53,19 +56,7 @@ export default function Navbar() {
               color: 'var(--text-primary)',
             }}
           >
-            医学影像工作台
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.625rem',
-              fontWeight: 500,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--text-muted)',
-            }}
-          >
-            MRI · 分类 · 分割
+            {t('nav.systemTitle')}
           </span>
         </div>
       </div>
@@ -111,10 +102,11 @@ export default function Navbar() {
               end={item.to === '/'}
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
             >
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           ))}
         </nav>
+        <LanguageToggle />
         <ThemeToggle />
       </div>
     </header>
