@@ -168,13 +168,14 @@ def load_resnet50_model(model_path: Path, device: torch.device) -> torch.nn.Modu
     """Load ResNet-50 for classification."""
     model = torchvision_models.resnet50(weights=None)
 
+    # Replace final FC layer for 2-class classification BEFORE loading weights
+    model.fc = torch.nn.Linear(model.fc.in_features, 2)
+
     if model_path.exists():
         state_dict = torch.load(model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         print(f"Loaded ResNet-50 from {model_path}")
 
-    # Replace final FC layer for 2-class classification
-    model.fc = torch.nn.Linear(model.fc.in_features, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -184,13 +185,14 @@ def load_vgg16_model(model_path: Path, device: torch.device) -> torch.nn.Module:
     """Load VGG-16 for classification."""
     model = torchvision_models.vgg16(weights=None)
 
+    # Replace final FC layer for 2-class classification BEFORE loading weights
+    model.classifier[6] = torch.nn.Linear(4096, 2)
+
     if model_path.exists():
         state_dict = torch.load(model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         print(f"Loaded VGG-16 from {model_path}")
 
-    # Replace final FC layer for 2-class classification
-    model.classifier[6] = torch.nn.Linear(4096, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -200,13 +202,14 @@ def load_alexnet_model(model_path: Path, device: torch.device) -> torch.nn.Modul
     """Load AlexNet for classification."""
     model = torchvision_models.alexnet(weights=None)
 
+    # Replace final FC layer for 2-class classification BEFORE loading weights
+    model.classifier[6] = torch.nn.Linear(4096, 2)
+
     if model_path.exists():
         state_dict = torch.load(model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         print(f"Loaded AlexNet from {model_path}")
 
-    # Replace final FC layer for 2-class classification
-    model.classifier[6] = torch.nn.Linear(4096, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -216,13 +219,14 @@ def load_densenet121_model(model_path: Path, device: torch.device) -> torch.nn.M
     """Load DenseNet-121 for classification."""
     model = torchvision_models.densenet121(weights=None)
 
+    # Replace classifier for 2-class classification BEFORE loading weights
+    model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
+
     if model_path.exists():
         state_dict = torch.load(model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         print(f"Loaded DenseNet-121 from {model_path}")
 
-    # Replace classifier for 2-class classification
-    model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -232,10 +236,17 @@ def load_efficientnet_model(model_path: Path, device: torch.device) -> torch.nn.
     """Load EfficientNet-B0 for classification."""
     model = torchvision_models.efficientnet_b0(weights=None)
 
+    # Replace classifier for 2-class classification BEFORE loading weights
+    model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
+
     if model_path.exists():
         state_dict = torch.load(model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         print(f"Loaded EfficientNet-B0 from {model_path}")
+
+    model = model.to(device)
+    model.eval()
+    return model
 
     # Replace classifier layer for 2-class classification
     model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
@@ -418,8 +429,8 @@ def _predict_2d_classifier(images: List[np.ndarray], model: torch.nn.Module, dev
         std = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 3)
         img_np = (img_np - mean) / std
 
-        # Convert to tensor
-        batch = torch.from_numpy(img_np).permute(2, 0, 1).unsqueeze(0).to(device)
+        # Convert to tensor (ensure float32)
+        batch = torch.from_numpy(img_np.astype(np.float32)).permute(2, 0, 1).unsqueeze(0).to(device)
 
         with torch.no_grad():
             logits = model(batch)
@@ -581,10 +592,12 @@ async def classify(
 
     results = []
     images = []
+    file_bytes = []  # Store bytes for reuse
 
     for upload in files:
         try:
             img_bytes = await upload.read()
+            file_bytes.append(img_bytes)  # Save for later
             img = Image.open(io.BytesIO(img_bytes)).convert("L")
             arr = np.array(img, dtype=np.float32)
             images.append(arr)
@@ -601,7 +614,7 @@ async def classify(
         model_results = _predict_classification(images, seg_model, device)
 
     for i, upload in enumerate(files):
-        img_bytes = await upload.read()
+        img_bytes = file_bytes[i]  # Reuse saved bytes
         img_rgb = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         b64 = _png_to_base64(img_rgb)
 
