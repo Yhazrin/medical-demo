@@ -38,6 +38,7 @@ const modelOptions = [
 ];
 
 const STORAGE_KEY = 'medical_demo_classification_results';
+const MAX_STORAGE_ITEMS = 50;  // Limit to prevent localStorage quota exceeded
 
 function loadFromStorage(): ClassifyResult[] {
   try {
@@ -50,9 +51,16 @@ function loadFromStorage(): ClassifyResult[] {
 
 function saveToStorage(results: ClassifyResult[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+    // Keep only the most recent items to avoid localStorage quota exceeded
+    const limited = results.slice(-MAX_STORAGE_ITEMS);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(limited));
   } catch (e) {
-    console.error('Failed to save to localStorage:', e);
+    // If still fails (quota exceeded), clear and retry with fewer items
+    if (e.name === 'QuotaExceededError') {
+      localStorage.removeItem(STORAGE_KEY);
+      const limited = results.slice(-10);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(limited));
+    }
   }
 }
 
