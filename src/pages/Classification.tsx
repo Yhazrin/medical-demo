@@ -31,9 +31,10 @@ interface ClassifyResult {
 }
 
 const modelOptions = [
-  { value: 'unet3d_custom', labelKey: 'classification.modelUnet3d', descriptionKey: 'classification.modelUnet3dDesc' },
   { value: 'resnet50_imagenet', labelKey: 'classification.modelResnet50', descriptionKey: 'classification.modelResnet50Desc' },
-  { value: 'efficientnet_b0_imagenet', labelKey: 'classification.modelEfficientnet', descriptionKey: 'classification.modelEfficientnetDesc' },
+  { value: 'vgg16_imagenet', labelKey: 'classification.modelVgg16', descriptionKey: 'classification.modelVgg16Desc' },
+  { value: 'alexnet_imagenet', labelKey: 'classification.modelAlexnet', descriptionKey: 'classification.modelAlexnetDesc' },
+  { value: 'densenet121_imagenet', labelKey: 'classification.modelDensenet121', descriptionKey: 'classification.modelDensenet121Desc' },
 ];
 
 const STORAGE_KEY = 'medical_demo_classification_results';

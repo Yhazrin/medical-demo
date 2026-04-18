@@ -30,6 +30,9 @@ interface SegmentationResult {
 
 const modelOptions = [
   { value: 'unet3d_custom', labelKey: 'segmentation.modelUnet3d', descriptionKey: 'segmentation.modelUnet3dDesc' },
+  { value: 'unetplusplus_custom', labelKey: 'segmentation.modelUnetPlusPlus', descriptionKey: 'segmentation.modelUnetPlusPlusDesc', disabled: true },
+  { value: 'deeplabv3_custom', labelKey: 'segmentation.modelDeepLabV3', descriptionKey: 'segmentation.modelDeepLabV3Desc', disabled: true },
+  { value: 'transunet_custom', labelKey: 'segmentation.modelTransUnet', descriptionKey: 'segmentation.modelTransUnetDesc', disabled: true },
 ];
 
 const STORAGE_KEY = 'medical_demo_segmentation_results';

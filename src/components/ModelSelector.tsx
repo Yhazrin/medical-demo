@@ -6,6 +6,7 @@ export interface ModelOption {
   description?: string;
   labelKey?: string;
   descriptionKey?: string;
+  disabled?: boolean;
 }
 
 interface ModelSelectorProps {
@@ -53,9 +54,11 @@ export default function ModelSelector({
         {options.map((option) => (
           <button
             key={option.value}
-            className={`radio-pill${value === option.value ? ' active' : ''}`}
-            onClick={() => onChange(option.value)}
+            className={`radio-pill${value === option.value ? ' active' : ''}${option.disabled ? ' disabled' : ''}`}
+            onClick={() => !option.disabled && onChange(option.value)}
             type="button"
+            disabled={option.disabled}
+            title={option.disabled ? 'Coming soon' : undefined}
           >
             {getLabel(option)}
           </button>

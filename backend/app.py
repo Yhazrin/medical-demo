@@ -35,40 +35,69 @@ MODELS_DIR = Path(__file__).parent / "models"
 
 # Available models for classification
 CLASSIFY_MODELS = {
-    "unet3d_custom": {
-        "name_zh": "3D UNet (自训练)",
-        "name_en": "3D UNet (Custom)",
-        "file": "best_real_model.pth",
-        "source_zh": "自训练",
-        "source_en": "Custom",
-        "type": "segmentation"  # Used for segmentation but can classify
-    },
     "resnet50_imagenet": {
-        "name_zh": "ResNet-50 (ImageNet预训练)",
-        "name_en": "ResNet-50 (ImageNet)",
+        "name_zh": "ResNet-50",
+        "name_en": "ResNet-50",
         "file": "resnet50_imagenet.pth",
-        "source_zh": "PyTorch下载",
-        "source_en": "PyTorch",
+        "source_zh": "ImageNet预训练",
+        "source_en": "ImageNet",
         "type": "classification"
     },
-    "efficientnet_b0_imagenet": {
-        "name_zh": "EfficientNet-B0 (ImageNet预训练)",
-        "name_en": "EfficientNet-B0 (ImageNet)",
-        "file": "efficientnet_b0_imagenet.pth",
-        "source_zh": "PyTorch下载",
-        "source_en": "PyTorch",
+    "vgg16_imagenet": {
+        "name_zh": "VGG-16",
+        "name_en": "VGG-16",
+        "file": "vgg16_imagenet.pth",
+        "source_zh": "ImageNet预训练",
+        "source_en": "ImageNet",
+        "type": "classification"
+    },
+    "alexnet_imagenet": {
+        "name_zh": "AlexNet",
+        "name_en": "AlexNet",
+        "file": "alexnet_imagenet.pth",
+        "source_zh": "ImageNet预训练",
+        "source_en": "ImageNet",
+        "type": "classification"
+    },
+    "densenet121_imagenet": {
+        "name_zh": "DenseNet-121",
+        "name_en": "DenseNet-121",
+        "file": "densenet121_imagenet.pth",
+        "source_zh": "ImageNet预训练",
+        "source_en": "ImageNet",
         "type": "classification"
     }
 }
 
-# Available models for segmentation (only 3D UNet for now)
+# Available models for segmentation
 SEGMENT_MODELS = {
     "unet3d_custom": {
-        "name_zh": "3D UNet (自训练)",
-        "name_en": "3D UNet (Custom)",
+        "name_zh": "U-Net (3D 自训练)",
+        "name_en": "U-Net (3D Custom)",
         "file": "best_real_model.pth",
         "source_zh": "自训练",
         "source_en": "Custom"
+    },
+    "unetplusplus_custom": {
+        "name_zh": "U-Net++",
+        "name_en": "U-Net++",
+        "file": "",
+        "source_zh": "待训练",
+        "source_en": "To be trained"
+    },
+    "deeplabv3_custom": {
+        "name_zh": "DeepLabV3",
+        "name_en": "DeepLabV3",
+        "file": "",
+        "source_zh": "待训练",
+        "source_en": "To be trained"
+    },
+    "transunet_custom": {
+        "name_zh": "TransUNet",
+        "name_en": "TransUNet",
+        "file": "",
+        "source_zh": "待训练",
+        "source_en": "To be trained"
     }
 }
 
@@ -144,8 +173,56 @@ def load_resnet50_model(model_path: Path, device: torch.device) -> torch.nn.Modu
         model.load_state_dict(state_dict)
         print(f"Loaded ResNet-50 from {model_path}")
 
-    # Remove final FC layer for feature extraction
-    model = torch.nn.Sequential(*list(model.children())[:-1])
+    # Replace final FC layer for 2-class classification
+    model.fc = torch.nn.Linear(model.fc.in_features, 2)
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def load_vgg16_model(model_path: Path, device: torch.device) -> torch.nn.Module:
+    """Load VGG-16 for classification."""
+    model = torchvision_models.vgg16(weights=None)
+
+    if model_path.exists():
+        state_dict = torch.load(model_path, map_location=device, weights_only=True)
+        model.load_state_dict(state_dict)
+        print(f"Loaded VGG-16 from {model_path}")
+
+    # Replace final FC layer for 2-class classification
+    model.classifier[6] = torch.nn.Linear(4096, 2)
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def load_alexnet_model(model_path: Path, device: torch.device) -> torch.nn.Module:
+    """Load AlexNet for classification."""
+    model = torchvision_models.alexnet(weights=None)
+
+    if model_path.exists():
+        state_dict = torch.load(model_path, map_location=device, weights_only=True)
+        model.load_state_dict(state_dict)
+        print(f"Loaded AlexNet from {model_path}")
+
+    # Replace final FC layer for 2-class classification
+    model.classifier[6] = torch.nn.Linear(4096, 2)
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def load_densenet121_model(model_path: Path, device: torch.device) -> torch.nn.Module:
+    """Load DenseNet-121 for classification."""
+    model = torchvision_models.densenet121(weights=None)
+
+    if model_path.exists():
+        state_dict = torch.load(model_path, map_location=device, weights_only=True)
+        model.load_state_dict(state_dict)
+        print(f"Loaded DenseNet-121 from {model_path}")
+
+    # Replace classifier for 2-class classification
+    model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -160,8 +237,8 @@ def load_efficientnet_model(model_path: Path, device: torch.device) -> torch.nn.
         model.load_state_dict(state_dict)
         print(f"Loaded EfficientNet-B0 from {model_path}")
 
-    # Remove classifier layer for feature extraction
-    model = torch.nn.Sequential(model.features, model.avgpool, torch.nn.Flatten())
+    # Replace classifier layer for 2-class classification
+    model.classifier = torch.nn.Linear(model.classifier.in_features, 2)
     model = model.to(device)
     model.eval()
     return model
@@ -187,12 +264,20 @@ def load_model(model_key: str, task_type: str = "classification") -> torch.nn.Mo
             raise ValueError(f"Unknown classification model: {model_key}")
 
     model_file = model_info["file"]
+    if not model_file:
+        raise ValueError(f"Model file not specified for {model_key}")
     model_path = MODELS_DIR / model_file
 
     if model_key == "unet3d_custom":
         model = load_unet3d_model(model_path, device)
     elif model_key == "resnet50_imagenet":
         model = load_resnet50_model(model_path, device)
+    elif model_key == "vgg16_imagenet":
+        model = load_vgg16_model(model_path, device)
+    elif model_key == "alexnet_imagenet":
+        model = load_alexnet_model(model_path, device)
+    elif model_key == "densenet121_imagenet":
+        model = load_densenet121_model(model_path, device)
     elif model_key == "efficientnet_b0_imagenet":
         model = load_efficientnet_model(model_path, device)
     else:
@@ -315,13 +400,16 @@ def _predict_unet3d(images: List[np.ndarray], model: torch.nn.Module, device: to
     return results
 
 
-def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, device: torch.device) -> List[dict]:
-    """Run classification model (ResNet/EfficientNet) inference."""
+def _predict_2d_classifier(images: List[np.ndarray], model: torch.nn.Module, device: torch.device) -> List[dict]:
+    """Run 2D classification model inference (VGG/AlexNet/DenseNet/ResNet)."""
     results = []
 
     for img in images:
-        # Resize to 224x224 for classification models
-        pil_img = Image.fromarray(img.astype(np.uint8) if img.max() > 1 else img).convert("RGB")
+        # Convert to RGB and resize to 224x224
+        img_uint8 = (img / 255.0 * 255).astype(np.uint8) if img.max() > 1 else img.astype(np.uint8)
+        img_rgb = np.stack([img_uint8] * 3, axis=-1) if img.ndim == 2 else img_uint8
+
+        pil_img = Image.fromarray(img_rgb)
         pil_img = pil_img.resize((224, 224), Image.BILINEAR)
         img_np = np.array(pil_img).astype(np.float32) / 255.0
 
@@ -334,21 +422,12 @@ def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, de
         batch = torch.from_numpy(img_np).permute(2, 0, 1).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            features = model(batch)
-            # Simple confidence based on feature magnitude
-            feature_magnitude = float(features.abs().mean())
-            confidence = min(0.99, 0.5 + feature_magnitude * 2)
+            logits = model(batch)
+            probs = torch.softmax(logits, dim=1)
+            conf, pred = probs.max(1)
 
-        # For pretrained models, we use a simple heuristic
-        # In production, you'd use actual ImageNet class labels
-        if feature_magnitude > 0.3:
-            label_key = "lesion"
-        else:
-            label_key = "no_lesion"
-
-        # Create overlay (same segmentation for visualization)
-        img_uint8 = (img / 255.0 * 255).astype(np.uint8) if img.max() > 1 else img.astype(np.uint8)
-        img_rgb = np.stack([img_uint8] * 3, axis=-1) if img.ndim == 2 else img
+            label_key = "lesion" if pred.item() == 1 else "no_lesion"
+            confidence = conf.item()
 
         results.append({
             "label_key": label_key,
@@ -358,6 +437,11 @@ def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, de
         })
 
     return results
+
+
+def _predict_classification(images: List[np.ndarray], model: torch.nn.Module, device: torch.device) -> List[dict]:
+    """Run classification model inference - uses 2D classifier."""
+    return _predict_2d_classifier(images, model, device)
 
 
 # ---------------------------------------------------------------------------
